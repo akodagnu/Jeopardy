@@ -1,1 +1,3 @@
 # Jeopardy
+Jeopardy! is a popular American television game show where contestants answer general knowledge questions to earn money. The unique twist is that answers are provided, and contestants respond with questions, adding an extra layer of challenge and trivia sophistication to the format. The show features categories with varying point values, and contestants can wager their earnings in a final round, making it a distinctive and engaging quiz show.
+This repository contains code to the game written using the Vue.js Options API.

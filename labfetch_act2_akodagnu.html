@@ -1,0 +1,378 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Akshata's Jeopardy</title>
+    <style>
+        table, th, td {
+            border: 1px solid black;
+            border-collapse: collapse;
+        }
+
+        .completed {
+            color: green;
+        }
+
+        .disabled {
+            pointer-events: none; /* Disable click events */
+            opacity: 0.5;
+        }
+
+        .incorrect {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h2>Welcome to Jeopardy!</h2><br />
+    <div id="app">
+        <div v-if="setupDone">
+            <table>
+                <tr>
+                    <th v-for="player in players" :key="player.number">
+                        Player {{player.number}}: ${{player.score}}
+                    </th>
+                </tr>
+                <tr>
+                    <th v-for="c in categories" :key="c.id">{{c.name}}</th>
+                </tr>
+                <tr v-for="rowIndex in 5">
+                    <!-- 5 rows for different dollar values -->
+                    <td v-for="(category, colIndex) in categories" :key="category.id">
+                        <button @click="selectQuestion(category.name, category.id, (rowIndex) * 100)"
+                                :class="{ completed: isCompletedQuestion(category.name, (rowIndex) * 100),
+                            disabled: isCompletedQuestion(category.name, (rowIndex) * 100),
+                            incorrect: isIncorrectAnswer(category.name, (rowIndex) * 100)}">
+
+                            <span v-if="isCompletedQuestion(category.name, (rowIndex) * 100)">
+                                P{{ getCompletingPlayer(category.name, (rowIndex) * 100) }}
+                            </span>
+                            <span v-else>
+                                ${{ (rowIndex) * 100 }}
+                            </span>
+                        </button>
+                    </td>
+                </tr>
+            </table>
+
+            <div id="question_display" v-if="selected_question">
+                Player {{currentPlayer}} selects {{selectedCategory}} for ${{questionValue}}
+                <br />
+                {{selected_question.question}}
+                <br />
+                <input type="radio" id="true" name="answer" value="True" />
+                <label for="true">True</label>
+                <br />
+                <input type="radio" id="false" name="answer" value="False" />
+                <label for="false">False</label>
+                <br />
+                <button @click="submitAnswer()">Submit</button>
+                <div id="correct_message">
+                    {{ correctMessage }}
+                    <br />
+                    Player {{currentPlayer}} to select
+                </div>
+            </div>
+
+            <div v-if="isGameCompleted" class="winner-message">
+                Player {{ getWinner() }} has won the game!
+            </div>
+        </div>
+        <div v-else>
+            <label for="pnum">Choose number of players:</label>
+
+            <select name="pnum" id="pnum" @input="numPlayers()">
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+            </select>
+            <br />
+            <label for="cnum">Choose number of categories:</label>
+
+            <select name="cnum" id="cnum" @input="numCategories()">
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+            </select>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@3"></script>
+    <script>
+        let app = Vue.createApp({
+            data() {
+                return {
+                    P1Score: 0,
+                    P2Score: 0,
+                    P3Score: 0,
+                    categories: [],
+                    selected_question: null,
+                    currentPlayer: 1,
+                    correctMessage: "",
+                    selectedCategory: "",
+                    questionValue: 0,
+                    completedQuestions: [],
+                    doubleJeopardyPositions: [],
+                    numberOfCategories: 4,
+                    wager: 0,
+                    numberOfPlayers: 0,
+                    setupDone: false, 
+                    players: []
+                }
+            },
+            created() {
+                //fetch('https://opentdb.com/api_category.php')
+                //    .then((response) => response.json())
+                //    .then((data) => {
+                //        const allCategories = data.trivia_categories;
+                //        const idsToRemove = [10, 13, 21, 26, 27, 29, 30, 32];
+
+                //        const updatedCategories = allCategories.filter(category => {
+                //            return !idsToRemove.includes(category.id);
+                //        });
+                //        this.categories = this.randomize(updatedCategories, this.numberOfCategories);
+                //    });
+                //this.setDoubleJeopardyPositions();
+            },
+            computed: {
+                isGameCompleted() {
+                    // Check if all questions have been completed
+                    const check = this.completedQuestions.length === (this.categories.length * 5)
+                    if (check === true) {
+                        this.selected_question = null;
+                    }
+                    return check;
+                }
+            },
+            methods: {
+                numPlayers() {
+                    this.numberOfPlayers = parseInt(document.getElementById('pnum').value);
+                },
+
+                numCategories() {
+                    this.numberOfCategories = parseInt(document.getElementById('cnum').value);
+                    this.setupDone = true;
+                    this.setup();
+                },
+
+                setup() {
+                    fetch('https://opentdb.com/api_category.php')
+                        .then((response) => response.json())
+                        .then((data) => {
+                            const allCategories = data.trivia_categories;
+                            const idsToRemove = [10, 13, 21, 26, 27, 29, 30, 32];
+
+                            const updatedCategories = allCategories.filter(category => {
+                                return !idsToRemove.includes(category.id);
+                            });
+                            this.categories = this.randomize(updatedCategories, this.numberOfCategories);
+                        });
+                    this.setDoubleJeopardyPositions();
+                    //this.scores = {};
+                    // this.players = Array.from({ length: this.numberOfPlayers }, (_, i) => i + 1);
+                    // Initialize the players array with player objects
+                    this.players = Array.from({ length: this.numberOfPlayers+1 }, (_, i) => {
+                        return {
+                            number: i + 1,
+                            score: 0
+                        };
+                    });
+                },
+
+                randomize(arr, n) {
+                    const result = new Array(n);
+                    let len = arr.length;
+                    const used = new Array(len);
+
+                    if (n > len) throw new RangeError('error');
+
+                    while (n--) {
+                        const x = Math.floor(Math.random() * len);
+                        result[n] = arr[x in used ? used[x] : x];
+                        used[x] = --len in used ? used[len] : len;
+                    }
+
+                    return result;
+                },
+
+                setDoubleJeopardyPositions() {
+                    while (this.doubleJeopardyPositions.length < ((this.numberOfCategories * 5) / 10)) {
+                        const randomPos = Math.floor(Math.random() * this.numberOfCategories * 5);
+                        if (!this.doubleJeopardyPositions.includes(randomPos)) {
+                            this.doubleJeopardyPositions.push(randomPos);
+                        }
+                    }
+                },
+
+                selectQuestion(categoryName, categoryId, value) {
+                    const difficulty = value <= 200 ? 'easy' : value <= 400 ? 'medium' : 'hard';
+                    fetch(`https://opentdb.com/api.php?amount=1&category=${categoryId}&difficulty=${difficulty}&type=boolean`)
+                        .then((response) => response.json())
+                        .then((data) => {
+                            this.selected_question = data.results[0];
+                            this.questionValue = value;
+                            this.selectedCategory = categoryName;
+                        });
+
+                    const currentPosition = this.completedQuestions.length;
+                    if (this.doubleJeopardyPositions.includes(currentPosition)) {
+                        const currentPlayerBalance = this.players[this.currentPlayer-1].score;
+                        //switch (this.currentPlayer) {
+                        //    case (1): currentPlayerBalance = this.P1Score; break;
+                        //    case (2): currentPlayerBalance = this.P2Score; break;
+                        //    case (3): currentPlayerBalance = this.P3Score; break;
+                        //}
+                        if (currentPlayerBalance < this.questionValue) {
+                            this.wager = this.questionValue;
+                            alert('Double Jeopardy! The wager value is ' + this.wager);
+                        }
+                        else {
+                            const new_wager = parseInt(prompt(`Double Jeopardy! Enter your wager (up to $${currentPlayerBalance}):`));
+                            if (new_wager > currentPlayerBalance || new_wager <= 0) {
+                                alert("Invalid wager. Please choose an amount up to your current balance.");
+                                return;
+                            } else {
+                                this.wager = new_wager;
+                            }
+                        }
+                    }
+                },
+
+                submitAnswer() {
+                    if (!this.selected_question) return;
+
+                    const selectedAnswer = document.querySelector('input[name="answer"]:checked');
+
+                    if (selectedAnswer) {
+                        const currentPosition = this.completedQuestions.length;
+                        const jeopardy = this.doubleJeopardyPositions.includes(currentPosition);
+                        const isCorrect = selectedAnswer.value === this.selected_question.correct_answer;
+                        const categoryName = this.selected_question.category; // Store the category ID
+                        const value = this.questionValue; // Store the question value
+                        if (isCorrect) {
+                            this.correctMessage = "Correct!";
+
+                            // Update the player's score
+                            if (!jeopardy) {
+                                for (let i = 1; i <= this.numberOfPlayers; i++) {
+                                    if (this.currentPlayer === i) {
+                                        this.players[i-1].score += value;
+                                    }
+                                }
+                            }
+                            else {
+                                for (let i = 1; i <= this.numberOfPlayers; i++) {
+                                    if (this.currentPlayer === i) {
+                                        this.players[i-1].score += this.wager;
+                                    }
+                                }
+                            }
+
+                            // Add the completed question to the array
+                            this.completedQuestions.push({
+                                category: categoryName,
+                                value: value,
+                                player: this.currentPlayer,
+                                answer: this.correctMessage
+                            });
+
+                            // Reset the selected question and correctMessage
+                            this.selectedCategory = "";
+                            this.questionValue = 0;
+                            this.selected_question = " "; // Clear the selected question
+                            this.correctMessage = "Correct!";
+                        } else {
+                            this.correctMessage = "Incorrect!";
+
+                            // Add the completed question to the array
+                            this.completedQuestions.push({
+                                category: categoryName,
+                                value: value,
+                                player: this.currentPlayer,
+                                answer: this.correctMessage
+                            });
+
+                            // Update the player's score
+                            if (!jeopardy) {
+                                for (let i = 1; i <= this.numberOfPlayers; i++) {
+                                    if (this.currentPlayer === i) {
+                                        this.players[i-1].score -= value;
+                                    }
+                                }
+                                //if (this.currentPlayer === 1) {
+                                //    this.P1Score -= value;
+                                //} else if (this.currentPlayer === 2) {
+                                //    this.P2Score -= value;
+                                //} else if (this.currentPlayer === 3) {
+                                //    this.P3Score -= value;
+                                //}
+                            }
+                            else {
+                                for (let i = 1; i <= this.numberOfPlayers; i++) {
+                                    if (this.currentPlayer === i) {
+                                        this.players[i-1].score -= this.wager;
+                                    }
+                                }
+                            }
+
+                            if (this.currentPlayer === this.numberOfPlayers) {
+                                this.currentPlayer = 1;
+                            } else {
+                                this.currentPlayer += 1;
+                            }
+
+                            this.selectedCategory = "";
+                            this.questionValue = 0;
+                            this.selected_question = " "; // Clear the selected question
+                        }
+                    }
+                },
+
+                // Check if a question is completed
+                isCompletedQuestion(category, value) {
+                    return this.completedQuestions.some((question) =>
+                        question.category === category && question.value === value
+                    );
+                },
+
+                // Get the player number who completed a question
+                getCompletingPlayer(category, value) {
+                    const completedQuestion = this.completedQuestions.find((question) =>
+                        question.category === category && question.value === value
+                    );
+                    if (completedQuestion) {
+                        return completedQuestion.player;
+                    }
+                    return null;
+                },
+
+                isIncorrectAnswer(category, value) {
+                    const completedQuestion = this.completedQuestions.find((question) =>
+                        question.category === category && question.value === value && question.answer === "Incorrect!"
+                    );
+                    return completedQuestion;
+                },
+
+                getWinner() {
+                    let players = this.players;
+
+                    // Sort players by score in descending order
+                    players.sort((a, b) => b.score - a.score);
+
+                    // Check for a tie
+                    if (players[0].score === players[1].score) {
+                        return "It's a tie!";
+                    }
+
+                    return players[0].number; // The player with the highest score wins
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
